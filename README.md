@@ -25,263 +25,156 @@
     <img src="assets/teaser.png" alt="Teaser image of Pixal3D"/>
 </div>
 
-**Pixal3D** generates high-fidelity 3D assets from a single image. Unlike previous methods that loosely inject image features via attention, Pixal3D explicitly lifts pixel features into 3D through back-projection, establishing direct pixel-to-3D correspondences. This enables near-reconstruction-level fidelity with detailed geometry and PBR textures.
+**Pixal3D** generates high-fidelity 3D assets from a single image.
+Instead of loosely injecting image features via attention, it explicitly lifts pixel features into 3D through back-projection, establishing direct pixel-to-3D correspondences.
 
 ---
 
-## ✨ News
+## 🔬 This Fork
 
-- **May 2026**: Release training code and data preparation toolkit. 🔧
-- **May 2026**: Release the improved version based on [Trellis.2](https://github.com/microsoft/TRELLIS.2) backbone. 💪
-- **May 2026**: Release inference code and online demo. 🤗
-- **Apr 2026**: Our paper is accepted to SIGGRAPH 2026! 🎉
+This is a fork of the [original Pixal3D repo](https://github.com/TencentARC/Pixal3D) that adds **texture-only inference with automatic pose alignment**: texturing an externally-supplied mesh (e.g. a Hunyuan3D output) from a single photo, even when the photo is not shot from the mesh's canonical front.
+
+**Added files**
+
+| File | Purpose |
+|------|---------|
+| `texture_inference.py` | CLI entry point: texture an external mesh from a photo. |
+| `pixal3d/pipelines/pixal3d_texturing.py` | Texturing pipeline (proj-mode texture DIT on an external mesh). |
+| `pixal3d/utils/pose_utils.py` | Confidence-gated photo↔mesh rotation estimation from MoGe-2 point maps. |
+| `visualize_voxels.py` | Export a `.pt` voxel-field dump to `.ply` for inspection. |
+
+**Modified files**
+
+| File | Change |
+|------|--------|
+| `pixal3d/pipelines/__init__.py` | Registers `Pixal3DTexturingPipeline`. |
+| `pixal3d/trainers/flow_matching/mixins/image_conditioned_proj.py` | Proj-feature extractor changes supporting the texturing pipeline. |
+
+Everything else is unchanged from upstream.
 
 ## 📌 Branches
 
 | Branch | Description |
 |--------|-------------|
-| `main` | **Latest version** — improved implementation based on [Trellis.2](https://github.com/microsoft/TRELLIS.2) backbone with better performance. |
-| `paper` | **Paper version** — original implementation based on [Direct3D-S2](https://github.com/DreamTechAI/Direct3D-S2), corresponding to results reported in our SIGGRAPH 2026 paper. |
+| `main` | **Latest version** — improved implementation based on the [Trellis.2](https://github.com/microsoft/TRELLIS.2) backbone. |
+| `paper` | **Paper version** — original [Direct3D-S2](https://github.com/DreamTechAI/Direct3D-S2)-based implementation reproducing the SIGGRAPH 2026 paper results. |
 
-> If you want to reproduce the results in our paper, please switch to the `paper` branch.
+## 🚀 Installation
 
-## 🎮 Try It Online
-
-You can try Pixal3D directly in your browser without any installation via our Hugging Face Gradio demo:
-
-👉 [**Launch Demo**](https://huggingface.co/spaces/TencentARC/Pixal3D)
-
-## 🚀 Getting Started
-
-### Installation
-
-#### Step 1: Follow TRELLIS.2 Installation
-
-Please first follow the installation guide of [TRELLIS.2](https://github.com/microsoft/TRELLIS.2) to set up the base environment.
-
-#### Step 2: Install Additional Dependencies
+First set up the base [TRELLIS.2](https://github.com/microsoft/TRELLIS.2) environment, then:
 
 ```bash
 pip install -r requirements.txt
-```
 
-#### Step 3: Install natten
-
-```bash
+# Replace xx with your CUDA arch and desired build worker count
 NATTEN_CUDA_ARCH="xx" NATTEN_N_WORKERS=xx pip install natten==0.21.0 --no-build-isolation
-```
 
-Please replace `xx` with the CUDA architecture and the number of build workers suitable for your machine.
-
-#### Step 4: Install utils3d
-
-```bash
 pip install https://github.com/LDYang694/Storages/releases/download/20260430/utils3d-0.0.2-py3-none-any.whl
 ```
 
-> **Note**: `requirements-hfdemo.txt` is for the Hugging Face Spaces demo (H-series GPU architecture) and may not be compatible with other architectures.
+> If `flash_attn` is unavailable, prefix any command with `ATTN_BACKEND=sdpa`.
 
-### Usage
+## 🖼️ Inference
 
-#### Inference
-
-Generate a GLB mesh from a single image:
+**Image → 3D** (generate a GLB from a single image):
 
 ```bash
 python inference.py --image assets/images/0_img.png --output ./output.glb
-```
-
-**Low-VRAM mode** (reduces peak VRAM by loading models on-demand):
-
-```bash
-python inference.py --image assets/images/0_img.png --output ./output.glb --low_vram
-```
-
-By default, the pipeline resolution is **1536** (standard mode) or **1024** (low-VRAM mode). You can override this with `--resolution`:
-
-```bash
-# Force 1536 even in low-VRAM mode
-python inference.py --image assets/images/0_img.png --output ./output.glb --low_vram --resolution 1536
-
-# Force 1024 in standard mode
+python inference.py --image assets/images/0_img.png --output ./output.glb --low_vram   # ~10-12GB VRAM
 python inference.py --image assets/images/0_img.png --output ./output.glb --resolution 1024
 ```
 
-**Tip**: If you don't have `flash_attn` installed, you can use PyTorch's built-in SDPA backend instead:
-> ```bash
-> ATTN_BACKEND=sdpa python inference.py --image assets/images/0_img.png --output ./output.glb --low_vram
-> ```
+Default resolution is 1536 (standard) or 1024 (low-VRAM); override with `--resolution`.
 
-### Web Demo
-
-We provide a Gradio web demo for Pixal3D, which allows you to generate 3D meshes from images interactively.
+**Texture an external mesh** (this fork) — pose-aligned texturing of a supplied mesh from a photo:
 
 ```bash
-python app.py 
+python texture_inference.py --mesh mesh.glb --image photo.png --output ./textured.glb --low_vram
+python texture_inference.py --mesh mesh.glb --image photo.png --output ./textured.glb --no_pose      # skip pose alignment
+python texture_inference.py --mesh mesh.glb --image photo.png --output ./textured.glb --debug_proj   # dump projection overlays
 ```
 
-Low-VRAM mode is also available for the web demo. The frontend default resolution will automatically switch to 1024 in low-VRAM mode (1536 otherwise), but can be changed manually in the UI.
+Key options: `--resolution` (voxel grid, default 1024), `--texture_size` (atlas, default 2048), `--fov` (radians, override MoGe estimate), `--bbox_padding` (default 1.1).
+
+**Web demo** (Gradio):
 
 ```bash
-python app.py --low_vram
-# or via environment variable:
-LOW_VRAM=1 python app.py
+python app.py
+python app.py --low_vram   # or: LOW_VRAM=1 python app.py
 ```
+
 ## 🔧 Training
 
-We provide the full training codebase for reproducing Pixal3D from scratch.
+Pixal3D is trained as a three-stage cascade, each stage progressively increasing resolution.
+All stages use pixel-aligned projection conditioning and view-aligned latents (2 views by default).
+Within a stage, train the lowest resolution first, then fine-tune upward by setting `finetune_ckpt` in the config to the previous checkpoint.
 
-### Data Preparation
+First prepare data following **[data_toolkit/README.md](data_toolkit/README.md)**, then:
 
-Prepare view-aligned O-Voxel data and rendered condition images by following the data toolkit instructions:
-
-> 📂 **[data_toolkit/README.md](data_toolkit/README.md)**
-
-### Overview
-
-Pixal3D is trained as a three-stage cascade, each progressively increasing resolution:
-
-| Stage | Model | Resolutions | Config Prefix |
-|-------|-------|-------------|---------------|
-| 1 | Sparse Structure | 32 → 64 | `ss_flow_img_dit_*_proj_finetune` |
-| 2 | Shape | 256 → 512 → 1024 | `slat_flow_img2shape_*_proj_finetune` |
-| 3 | Texture | 256 → 512 → 1024 | `slat_flow_imgshape2tex_*_proj_finetune` |
-
-All stages use **pixel-aligned projection conditioning** and **view-aligned latents** (2 views by default). Within each stage, start from the lowest resolution and progressively fine-tune to higher resolutions by setting `finetune_ckpt` in the config.
-
-### Quick Start
-
-```sh
-python train.py \
-  --config <CONFIG_JSON> \
-  --output_dir <OUTPUT_DIR> \
-  --data_dir '<DATA_DIR_JSON>'
+```bash
+python train.py --config <CONFIG_JSON> --output_dir <OUTPUT_DIR> --data_dir '<DATA_DIR_JSON>'
 ```
 
-`--data_dir` is a JSON string describing the dataset layout. Different stages require different keys:
+`--data_dir` is a JSON string describing the dataset layout. Stages, configs, and required keys:
 
-| Stage | Required keys |
-|-------|---------------|
-| Sparse Structure | `base`, `ss_latent`, `render_cond` |
-| Shape | `base`, `shape_latent`, `render_cond` |
-| Texture | `base`, `shape_latent`, `pbr_latent`, `render_cond` |
-
-### Example: Training All Three Stages
-
-Below we show the full training sequence using ObjaverseXL as an example. Each higher-resolution step requires updating `finetune_ckpt` in its config JSON to point to the previous checkpoint.
+| Stage | Config prefix | Resolutions | Required data keys |
+|-------|---------------|-------------|--------------------|
+| 1 — Sparse Structure | `ss_flow_img_dit_*_proj_finetune` | 32 → 64 | `base`, `ss_latent`, `render_cond` |
+| 2 — Shape | `slat_flow_img2shape_*_proj_finetune` | 256 → 512 → 1024 | `base`, `shape_latent`, `render_cond` |
+| 3 — Texture | `slat_flow_imgshape2tex_*_proj_finetune` | 256 → 512 → 1024 | `base`, `shape_latent`, `pbr_latent`, `render_cond` |
 
 <details>
-<summary><b>Stage 1: Sparse Structure (32 → 64)</b></summary>
+<summary><b>Example: full three-stage sequence (ObjaverseXL)</b></summary>
+
+Set `finetune_ckpt` in each higher-resolution config to the previous checkpoint.
 
 ```sh
-# Resolution 32
-python train.py \
-  --config configs/gen/ss_flow_img_dit_1_3B_32_bf16_proj_finetune.json \
+# --- Stage 1: Sparse Structure (32 → 64) ---
+python train.py --config configs/gen/ss_flow_img_dit_1_3B_32_bf16_proj_finetune.json \
   --output_dir results/ss_32 \
   --data_dir '{"ObjaverseXL_sketchfab": {"base": "datasets/ObjaverseXL_sketchfab", "ss_latent": "datasets/ObjaverseXL_sketchfab/ss_latents/ss_enc_conv3d_16l8_fp16_64_view", "render_cond": "datasets/ObjaverseXL_sketchfab/renders_cond"}}'
 
-# Resolution 64 (set finetune_ckpt → results/ss_32 checkpoint)
-python train.py \
-  --config configs/gen/ss_flow_img_dit_1_3B_32_bf16_proj_finetune_ft64.json \
+python train.py --config configs/gen/ss_flow_img_dit_1_3B_32_bf16_proj_finetune_ft64.json \
   --output_dir results/ss_ft64 \
   --data_dir '{"ObjaverseXL_sketchfab": {"base": "datasets/ObjaverseXL_sketchfab", "ss_latent": "datasets/ObjaverseXL_sketchfab/ss_latents/ss_enc_conv3d_16l8_fp16_64_view", "render_cond": "datasets/ObjaverseXL_sketchfab/renders_cond"}}'
-```
-</details>
 
-<details>
-<summary><b>Stage 2: Shape (256 → 512 → 1024)</b></summary>
-
-```sh
-# Resolution 256
-python train.py \
-  --config configs/gen/slat_flow_img2shape_dit_1_3B_256_bf16_proj_finetune.json \
+# --- Stage 2: Shape (256 → 512 → 1024) ---
+python train.py --config configs/gen/slat_flow_img2shape_dit_1_3B_256_bf16_proj_finetune.json \
   --output_dir results/shape_256 \
   --data_dir '{"ObjaverseXL_sketchfab": {"base": "datasets/ObjaverseXL_sketchfab", "shape_latent": "datasets/ObjaverseXL_sketchfab/shape_latents/shape_enc_next_dc_f16c32_fp16_256_view", "render_cond": "datasets/ObjaverseXL_sketchfab/renders_cond"}}'
+# ...then _ft512 (shape_..._512_view) and _ft1024 (shape_..._1024_view) configs.
 
-# Resolution 512
-python train.py \
-  --config configs/gen/slat_flow_img2shape_dit_1_3B_256_bf16_proj_finetune_ft512.json \
-  --output_dir results/shape_ft512 \
-  --data_dir '{"ObjaverseXL_sketchfab": {"base": "datasets/ObjaverseXL_sketchfab", "shape_latent": "datasets/ObjaverseXL_sketchfab/shape_latents/shape_enc_next_dc_f16c32_fp16_512_view", "render_cond": "datasets/ObjaverseXL_sketchfab/renders_cond"}}'
-
-# Resolution 1024
-python train.py \
-  --config configs/gen/slat_flow_img2shape_dit_1_3B_512_bf16_proj_finetune_ft1024.json \
-  --output_dir results/shape_ft1024 \
-  --data_dir '{"ObjaverseXL_sketchfab": {"base": "datasets/ObjaverseXL_sketchfab", "shape_latent": "datasets/ObjaverseXL_sketchfab/shape_latents/shape_enc_next_dc_f16c32_fp16_1024_view", "render_cond": "datasets/ObjaverseXL_sketchfab/renders_cond"}}'
-```
-</details>
-
-<details>
-<summary><b>Stage 3: Texture (256 → 512 → 1024)</b></summary>
-
-```sh
-# Resolution 256
-python train.py \
-  --config configs/gen/slat_flow_imgshape2tex_dit_1_3B_256_bf16_proj_finetune.json \
+# --- Stage 3: Texture (256 → 512 → 1024) ---
+python train.py --config configs/gen/slat_flow_imgshape2tex_dit_1_3B_256_bf16_proj_finetune.json \
   --output_dir results/tex_256 \
   --data_dir '{"ObjaverseXL_sketchfab": {"base": "datasets/ObjaverseXL_sketchfab", "shape_latent": "datasets/ObjaverseXL_sketchfab/shape_latents/shape_enc_next_dc_f16c32_fp16_256_view", "pbr_latent": "datasets/ObjaverseXL_sketchfab/pbr_latents/tex_enc_next_dc_f16c32_fp16_256_view", "render_cond": "datasets/ObjaverseXL_sketchfab/renders_cond"}}'
-
-# Resolution 512
-python train.py \
-  --config configs/gen/slat_flow_imgshape2tex_dit_1_3B_512_bf16_proj_finetune.json \
-  --output_dir results/tex_512 \
-  --data_dir '{"ObjaverseXL_sketchfab": {"base": "datasets/ObjaverseXL_sketchfab", "shape_latent": "datasets/ObjaverseXL_sketchfab/shape_latents/shape_enc_next_dc_f16c32_fp16_512_view", "pbr_latent": "datasets/ObjaverseXL_sketchfab/pbr_latents/tex_enc_next_dc_f16c32_fp16_512_view", "render_cond": "datasets/ObjaverseXL_sketchfab/renders_cond"}}'
-
-# Resolution 1024
-python train.py \
-  --config configs/gen/slat_flow_imgshape2tex_dit_1_3B_512_bf16_proj_finetune_ft1024.json \
-  --output_dir results/tex_ft1024 \
-  --data_dir '{"ObjaverseXL_sketchfab": {"base": "datasets/ObjaverseXL_sketchfab", "shape_latent": "datasets/ObjaverseXL_sketchfab/shape_latents/shape_enc_next_dc_f16c32_fp16_1024_view", "pbr_latent": "datasets/ObjaverseXL_sketchfab/pbr_latents/tex_enc_next_dc_f16c32_fp16_1024_view", "render_cond": "datasets/ObjaverseXL_sketchfab/renders_cond"}}'
+# ...then the _512 and _ft1024 texture configs with matching 512/1024 latent dirs.
 ```
 </details>
 
-### Additional Options
-
 <details>
-<summary><b>All command-line arguments</b></summary>
+<summary><b>Common <code>train.py</code> flags</b></summary>
 
-| Argument | Description | Default |
-|----------|-------------|---------|
-| `--config` | Config JSON path | *required* |
-| `--output_dir` | Output directory | *required* |
-| `--data_dir` | Dataset JSON string | `./data/` |
-| `--load_dir` | Checkpoint load directory | `output_dir` |
-| `--ckpt` | Resume from step | `latest` |
-| `--auto_retry` | Retries on failure | `3` |
-| `--tryrun` | Dry run | `false` |
-| `--profile` | Profiling | `false` |
-| `--num_nodes` | Number of nodes | `1` |
-| `--node_rank` | Current node rank | `0` |
-| `--num_gpus` | GPUs per node | all |
-| `--master_addr` | Master address | `localhost` |
-| `--master_port` | Master port | `12666` |
-| `--use_wandb` | Enable W&B logging | `false` |
-| `--wandb_project` | W&B project | `trellis2-training` |
-| `--wandb_name` | W&B run name | basename of `output_dir` |
-| `--wandb_id` | W&B run ID (resume) | — |
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--ckpt` | `latest` | Resume from a specific step. |
+| `--load_dir` | `output_dir` | Checkpoint load directory. |
+| `--auto_retry` | `3` | Retries on OOM / crash. |
+| `--num_nodes` / `--node_rank` | `1` / `0` | Multi-node distributed. |
+| `--num_gpus` | all | GPUs per node. |
+| `--master_addr` / `--master_port` | `localhost` / `12666` | Distributed rendezvous. |
+| `--use_wandb` | `false` | Enable W&B logging (`--wandb_project`, `--wandb_name`, `--wandb_id`). |
+| `--tryrun` | `false` | Dry run. |
 
 </details>
-
-## 🌐 Community Projects
-
-We thank the community for building extensions and deployment guides for Pixal3D!
-
-- [Pixal3D-ComfyUI](https://github.com/Saganaki22/Pixal3D-ComfyUI) — ComfyUI integration with deployment guides for Windows, WSL, and more.
 
 ## 🤗 Acknowledgements
 
-This project is heavily built upon [Trellis.2](https://github.com/microsoft/TRELLIS.2) and [Direct3D-S2](https://github.com/DreamTechAI/Direct3D-S2). We sincerely thank the authors for their outstanding work on scalable 3D generation , which serves as the foundation of our codebase and model architecture.
-
-We also thank the following repos for their great contributions:
-
-- [Direct3D-S2](https://github.com/DreamTechAI/Direct3D-S2)
-- [Trellis](https://github.com/microsoft/TRELLIS)
-- [Trellis.2](https://github.com/microsoft/TRELLIS.2)
+Built upon [Trellis.2](https://github.com/microsoft/TRELLIS.2), [Direct3D-S2](https://github.com/DreamTechAI/Direct3D-S2), and [Trellis](https://github.com/microsoft/TRELLIS).
+Pose alignment uses [MoGe-2](https://huggingface.co/Ruicheng/moge-2-vitl).
+We sincerely thank the authors for their outstanding work.
 
 ## 📄 Citation
-
-If you find this work useful, please consider citing:
 
 ```bibtex
 @article{li2026pixal3d,
@@ -294,5 +187,5 @@ If you find this work useful, please consider citing:
 
 ## 📜 License
 
-This project is released under the [MIT License](LICENSE). The third-party components included in this project remain licensed under their respective original terms; see [NOTICE](NOTICE) for the full list of dependencies and their licenses.
-
+Released under the [MIT License](LICENSE).
+Third-party components remain under their original terms; see [NOTICE](NOTICE).
